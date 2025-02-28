@@ -1,0 +1,3 @@
+obj-$(CONFIG_DVB_M88RS6000B) += rs6000_fe.o
+
+EXTRA_CFLAGS += -I.

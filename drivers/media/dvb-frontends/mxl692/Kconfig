@@ -1,0 +1,8 @@
+config DVB_MXL692
+	tristate "Maxlinear MxL692 ATSC/QAM"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  Say Y when you want to support this frontend.
+
+

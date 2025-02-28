@@ -1,0 +1,7 @@
+config DVB_M88RS6000B
+	tristate "Montage Tehnology RS6000B based"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  A DVB-S/S2 tuner module. Say Y when you want to support this frontend.
+
