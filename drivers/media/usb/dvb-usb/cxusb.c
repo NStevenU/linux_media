@@ -45,6 +45,12 @@
 #include "atbm8830.h"
 #include "si2168.h"
 #include "si2157.h"
+#include "mxl603.h"
+#include "mn88436.h"
+#include "cxd2858.h"
+#include "mxl692.h"
+#include "si2183.h"
+#include "si2141.h"
 
 /* debug */
 int dvb_usb_cxusb_debug;
@@ -53,6 +59,7 @@ MODULE_PARM_DESC(debug, "set debugging level (see cxusb.h)."
 		 DVB_USB_DEBUG_STATUS);
 
 DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
+#define deb_info(args...)   dprintk(dvb_usb_cxusb_debug, CXUSB_DBG_MISC, args)
 
 enum cxusb_table_index {
 	MEDION_MD95700,
@@ -75,6 +82,12 @@ enum cxusb_table_index {
 	DVICO_BLUEBIRD_DUAL_4_REV_2,
 	CONEXANT_D680_DMB,
 	MYGICA_D689,
+	MYGICA_T230,
+	MYGICA_A681,
+	MYGICA_A682,
+	MYGICA_T232,
+	MYGICA_692F,
+	MYGICA_689A,
 	NR__cxusb_table_index
 };
 
@@ -1351,6 +1364,693 @@ static int cxusb_mygica_d689_frontend_attach(struct dvb_usb_adapter *adap)
 	return 0;
 }
 
+static  struct si2183_config rmidt2_si2183_cfg_a = {
+	.demod_address = 0x64,
+	.output_mode = SI2183_PARALLEL_OUTPUT,
+	.clk_mode = Si2183_CONFIG_CLK_CLKIO,
+	.i2c_gate_en = Si2183_CONFIG_TUNER_I2CSW_ENABLE,
+	.tsclk_inv = SI2183_TSCLK_NOT_INVERT,
+	.ts_clk_mode = SI2183_TS_MODE_MANUAL,
+};
+
+static struct si2141_config rmidt2_si2141_config ={
+	.id = GT_TUNER_SI2141,
+	.i2c_address = 0x60,
+};
+
+static int cxusb_rmidt2_c68a_frontend_attach(struct dvb_usb_adapter *adap)
+{
+	struct dvb_usb_device *d = adap->dev;
+
+	/* Select required USB configuration */
+	if (usb_set_interface(d->udev, 0, 0) < 0)
+		err("set interface failed");
+
+	/* Unblock all USB pipes */
+	usb_clear_halt(d->udev,
+		usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+		usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+		usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+
+	/* Attach frontend */
+	adap->fe_adap[0].fe = dvb_attach(si2183_attach, &rmidt2_si2183_cfg_a, &adap->dev->i2c_adap);
+	if (adap->fe_adap[0].fe == NULL)
+		return -EIO;
+	return 0;
+}
+
+static int cxusb_rmidt2_c689_tuner_attach(struct dvb_usb_adapter *adap)
+{
+    struct dvb_frontend *fe;
+
+   deb_info("si2168 success attached  \n");
+   fe = dvb_attach(si2141_attach, adap->fe_adap[0].fe, &adap->dev->i2c_adap, &rmidt2_si2141_config);
+   return (fe == NULL) ? -EIO : 0;
+}
+
+static struct mxl603_config md681_mxl603_cfg = {
+        .i2c_address     = 0xC0 >> 1,
+        .if_freq         = IF_FREQ_5000000HZ,
+        .div_out         = MXL_DIV_OUT_1,
+        .clock_out       = MXL_CLOCK_OUT_ENABLE,
+        .xtal_freq       = CRYSTAL_FREQ_24000000HZ,
+        .signalMode      = 1,
+        .out_freq        = 5000,
+        .single_Supply   = MXL_SINGLESUPPLY_3_3V_ENABLE,
+};
+
+static int cxusb_mygica_md681_tuner_attach(struct dvb_usb_adapter *adap)
+{
+        struct dvb_frontend *fe;
+        fe = dvb_attach(mxl603_attach, adap->fe_adap[0].fe,
+                        &adap->dev->i2c_adap, &md681_mxl603_cfg);
+        return (fe == NULL) ? -EIO : 0;
+}
+
+static struct mn88436_config md681_mn88436_cfg = {
+	.demod_address = 0x18,
+};
+
+static int cxusb_mygica_md681_frontend_attach(struct dvb_usb_adapter *adap)
+{
+	struct dvb_usb_device *d = adap->dev;
+	/* Select required USB configuration */
+	if (usb_set_interface(d->udev, 0, 0) < 0)
+		err("set interface failed");
+	/* Unblock all USB pipes */
+	usb_clear_halt(d->udev,
+			usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+
+	/* Reset the tuner */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x07, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x07, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+
+	/* Attach frontend */
+	adap->fe_adap[0].fe = dvb_attach(mn88436_attach, &md681_mn88436_cfg, &d->i2c_adap);
+	if (adap->fe_adap[0].fe == NULL)
+		return -EIO;
+	return 0;
+}
+
+//////////////////////////////////////////////
+static int cxusb_mygica_rd640a_streaming_ctrl(struct dvb_usb_adapter *adap, int onoff)
+{
+    u8 data = 0x11;
+    u8 rdata;
+	struct i2c_msg msg[2] ={
+		{ .addr = 0x3c, .flags = 0, .buf = &data, .len = 1 },
+		{ .addr = 0x3c, .flags = I2C_M_RD, .buf = &rdata, .len = 1 }
+	};
+
+    if(onoff == 0 )
+		data = data | 0x04;
+	printk("%s enter",__func__);
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg[0], 1) != 1) {
+		err("set rd640a onoff failed");
+        return -EIO;
+	}
+
+	printk(KERN_WARNING "rd640a_streaming_ctrl =%d\n",onoff);
+
+	return 0;
+}
+
+static int cxusb_mygica_rd640a_pid_filter(struct dvb_usb_adapter *adap, int index, u16 pid, int onoff)
+{
+   	u8 cmd[3] = {0x00,0x00,0x00}; //0000_x0dd ,ddei_iiii ,iiii_iiii
+	struct i2c_msg msg = {
+		.addr = 0x3c, .flags = 0, .buf = cmd, .len = 3
+	};
+
+	printk("%s enter",__func__);
+    cmd[0] = cmd[0] | ((index&0x0f)>>2) ;
+    cmd[1] = cmd[1] | ((index&0x03)<<6) ;
+    cmd[1] = cmd[1] | ( (pid >> 8) & 0x1f) ;
+    cmd[2] = pid & 0xff;
+    if(onoff) {
+        cmd[1] &= ~0x20;
+    } else {
+        cmd[1] |= 0x20;
+    }
+
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg, 1) != 1) {
+		err("set rd640a_pid_filter failed");
+        return -EIO;
+	}
+
+	printk(KERN_WARNING "rd640a_pid_filter (%d)=%x on=%d\n",index , pid, onoff);
+
+	return 0;
+}
+
+
+static int cxusb_mygica_rd640a_pid_filter_ctrl(struct dvb_usb_adapter *adap, int onoff)
+{
+	u8 data = 0x10;
+	struct i2c_msg msg = {
+		.addr = 0x3c, .flags = 0, .buf = &data, .len = 1
+	};
+
+	printk("%s enter",__func__);
+    if(onoff == 0 )
+		data = data | 0x04;
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg, 1) != 1) {
+		err("set rd640a_pid_filter_ctrl failed");
+        return -EIO;
+	}
+	printk(KERN_WARNING "rd640a_pid_filter_ctrl =%d\n",onoff);
+
+	return 0;
+}
+
+static int cxusb_mygica_rd640b_streaming_ctrl(struct dvb_usb_adapter *adap, int onoff)
+{
+    u8 data = 0x13;
+    u8 rdata;
+	struct i2c_msg msg[2] ={
+		{ .addr = 0x3c, .flags = 0, .buf = &data, .len = 1 },
+		{ .addr = 0x3c, .flags = I2C_M_RD, .buf = &rdata, .len = 1 }
+	};
+
+    if(onoff == 0 )
+		data = data | 0x04;
+	printk("%s enter",__func__);
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg[0], 1) != 1) {
+		err("set rd640b onoff failed");
+        return -EIO;
+	}
+
+	printk(KERN_WARNING "rd640b_streaming_ctrl =%d\n",onoff);
+
+	return 0;
+}
+
+
+static int cxusb_mygica_rd640b_pid_filter(struct dvb_usb_adapter *adap, int index, u16 pid, int onoff)
+{
+   u8 cmd[3] = {0x04,0x00,0x00}; //0000_x1dd ,ddei_iiii ,iiii_iiii
+	struct i2c_msg msg = { .addr = 0x3c, .flags = 0,
+			       .buf = cmd, .len = 3 };
+
+	printk("%s enter",__func__);
+    cmd[0] = cmd[0] | ((index&0x0f)>>2) ;
+    cmd[1] = cmd[1] | ((index&0x03)<<6) ;
+    cmd[1] = cmd[1] | ( (pid >> 8) & 0x1f) ;
+    cmd[2] = pid & 0xff;
+    if(onoff) {
+        cmd[1] &= ~0x20;
+    } else {
+        cmd[1] |= 0x20;
+    }
+
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg, 1) != 1) {
+		err("set rd640b_pid_filter failed");
+        return -EIO;
+	}
+
+	printk(KERN_WARNING "rd640b_pid_filter (%d)=%x on=%d\n",index , pid, onoff);
+
+	return 0;
+}
+
+static int cxusb_mygica_rd640b_pid_filter_ctrl(struct dvb_usb_adapter *adap, int onoff)
+{
+   u8 data = 0x12;
+	struct i2c_msg msg = { .addr = 0x3c, .flags = 0,
+			       .buf = &data, .len = 1 };
+
+	printk("%s enter",__func__);
+#if 1
+    if(onoff == 0 ) data = data | 0x04;
+#endif
+	if (cxusb_i2c_xfer(&adap->dev->i2c_adap, &msg, 1) != 1) {
+		err("set rd640b_pid_filter_ctrl failed");
+        return -EIO;
+	}
+
+	printk(KERN_WARNING "rd640b_pid_filter_ctrl =%d\n",onoff);
+#if 0
+//test! pid test for liverlay20131015-200436-629000-1.ts
+    cxusb_mygica_rd640b_pid_filter(adap,0,0x00,0x01);
+
+    cxusb_mygica_rd640b_pid_filter(adap,1,0x30,0x01);//pat
+    cxusb_mygica_rd640b_pid_filter(adap,2,0x31,0x01);//video
+    cxusb_mygica_rd640b_pid_filter(adap,3,0x34,0x01);//audio
+    cxusb_mygica_rd640b_pid_filter(adap,4,0x35,0x01);//audio
+
+    cxusb_mygica_rd640b_pid_filter(adap,5,0x40,0x01);//pat
+    cxusb_mygica_rd640b_pid_filter(adap,6,0x41,0x00);//video
+    cxusb_mygica_rd640b_pid_filter(adap,7,0x44,0x01);//audio
+
+    cxusb_mygica_rd640b_pid_filter(adap,8,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,9,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,10,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,11,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,12,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,13,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,14,0x00,0x00);
+    cxusb_mygica_rd640b_pid_filter(adap,15,0x00,0x00);
+
+//test!
+#endif
+	return 0;
+}
+
+static int cxusb_mygica_rd640a_callback(void *ptr, int component,
+					  int command, int arg)
+{
+//	struct dvb_usb_adapter *adap = ptr;
+//	struct dvb_usb_device *d = adap->dev;
+	struct dvb_usb_device *d = ptr;
+
+    printk("%s ................................................enter\n",__func__);
+	switch (command) {
+	case FX2_HARDWARE_RESET:
+		deb_info("%s: hardware reset %d\n", __func__, arg);
+	/* Reset the tuner */
+        if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 0) < 0) { //EVK 81
+            err("clear tuner gpio failed");
+            return -EIO;
+        }
+        msleep(100);
+        if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 1) < 0) {
+            err("set tuner gpio failed");
+            return -EIO;
+        }
+        msleep(100);
+		break;
+	case FX2_HARDWARE_LNA:
+		deb_info("%s: hardware LAN %d\n", __func__, arg);
+		break;
+	default:
+		deb_info("%s: unknown command %d, arg %d\n", __func__,
+			 command, arg);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static struct mxl692_config rd640a_mxl692_cfg = {
+        .demod_address = 96,
+        .output_mode = MXL692_SERIAL_OUTPUT,
+};
+
+static int cxusb_mygica_rd640a_frontend_attach(struct dvb_usb_adapter *adap)
+{
+        struct dvb_usb_device *d = adap->dev;
+        /* Select required USB configuration */
+        if (usb_set_interface(d->udev, 0, 0) < 0)
+                err("set interface failed");
+        /* Unblock all USB pipes */
+        usb_clear_halt(d->udev,
+                usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+        usb_clear_halt(d->udev,
+                usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+        usb_clear_halt(d->udev,
+                usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+
+	/* Reset the tuner */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 0) < 0) { //evk81
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	/* Reset the fpga */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+    //enable lna
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x81, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	//enable ANT5V
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x82, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+
+
+        /* Attach frontend */
+        adap->fe_adap[0].fe = dvb_attach(mxl692_attach, &rd640a_mxl692_cfg,
+                &d->i2c_adap);
+        if (adap->fe_adap[0].fe == NULL)
+                return -EIO;
+
+        adap->fe_adap[0].fe->callback = cxusb_mygica_rd640a_callback;
+
+        return 0;
+}
+
+static int cxusb_mygica_rd640b_callback(void *ptr, int component, int command, int arg)
+{
+//	struct dvb_usb_adapter *adap = ptr;
+//	struct dvb_usb_device *d = adap->dev;
+	struct dvb_usb_device *d = ptr;
+
+    printk("%s ................................................enter\n",__func__);
+
+	switch (command) {
+	case FX2_HARDWARE_RESET:
+		deb_info("%s: hardware reset %d\n", __func__, arg);
+	/* Reset the tuner */
+        if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 0) < 0) { //evk80
+            err("clear tuner gpio failed");
+            return -EIO;
+        }
+        msleep(100);
+        if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 1) < 0) {
+            err("set tuner gpio failed");
+            return -EIO;
+        }
+        msleep(100);
+		break;
+	case FX2_HARDWARE_LNA:
+		deb_info("%s: hardware LAN %d\n", __func__, arg);
+		break;
+	default:
+		deb_info("%s: unknown command %d, arg %d\n", __func__,
+			 command, arg);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static struct mxl692_config rd640b_mxl692_cfg = {
+        .demod_address = 99,
+        .output_mode = MXL692_SERIAL_OUTPUT,
+};
+
+static int cxusb_mygica_rd640b_frontend_attach(struct dvb_usb_adapter *adap)
+{
+        struct dvb_usb_device *d = adap->dev;
+        /* Select required USB configuration */
+        if (usb_set_interface(d->udev, 0, 0) < 0)
+                err("set interface failed");
+        /* Unblock all USB pipes */
+        usb_clear_halt(d->udev,
+                usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+        usb_clear_halt(d->udev,
+                usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+        usb_clear_halt(d->udev,
+                usb_rcvbulkpipe(d->udev, d->props.adapter[1].fe[0].stream.endpoint));
+
+
+	/* Reset the tuner */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 0) < 0) { //evk80
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	/* Reset the fpga */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+    //enable lna
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	//enable ANT5V
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x82, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+
+
+        /* Attach frontend */
+        adap->fe_adap[0].fe = dvb_attach(mxl692_attach, &rd640b_mxl692_cfg,
+                &d->i2c_adap);
+        if (adap->fe_adap[0].fe == NULL)
+                return -EIO;
+
+        adap->fe_adap[0].fe->callback = cxusb_mygica_rd640b_callback;
+
+        return 0;
+}
+
+//////////////////////////////////////////////
+static struct cxd2858_config rd2540a_cfg = {
+	.demod_address = 0xC8,
+	.output_mode = CXD2858_PARALLEL_OUTPUT,
+};
+
+static int cxusb_mygica_rd2540a_frontend_attach(struct dvb_usb_adapter *adap)
+{
+    struct dvb_usb_device *d = adap->dev;
+    /* Select required USB configuration */
+    if (usb_set_interface(d->udev, 0, 0) < 0)
+            err("set interface failed");
+    /* Unblock all USB pipes */
+    usb_clear_halt(d->udev,
+            usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+    usb_clear_halt(d->udev,
+            usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+    usb_clear_halt(d->udev,
+            usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+
+	/* Reset the tuner */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 0) < 0) { //evk81
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x83, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	/* Reset the fpga */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(50);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(50);
+//    //enable lna
+//	if (cxusb_d680_dmb_gpio_tuner(d, 0x81, 1) < 0) {
+//		err("set tuner gpio failed");
+//		return -EIO;
+//	}
+//	//enable ANT5V
+//	if (cxusb_d680_dmb_gpio_tuner(d, 0x82, 1) < 0) {
+//		err("set tuner gpio failed");
+//		return -EIO;
+//	}
+
+
+    /* Attach frontend */
+    adap->fe_adap[0].fe = dvb_attach(cxd2858_attach, &rd2540a_cfg, &d->i2c_adap);
+    if (adap->fe_adap[0].fe == NULL)
+        return -EIO;
+
+    adap->fe_adap[0].fe->callback = cxusb_mygica_rd640a_callback;
+
+    return 0;
+}
+
+static struct cxd2858_config rd2540b_cfg = {
+	.demod_address = 0xD8,
+	.output_mode = CXD2858_PARALLEL_OUTPUT,
+};
+
+
+static int cxusb_mygica_rd2540b_frontend_attach(struct dvb_usb_adapter *adap)
+{
+    struct dvb_usb_device *d = adap->dev;
+    /* Select required USB configuration */
+    if (usb_set_interface(d->udev, 0, 0) < 0)
+            err("set interface failed");
+    /* Unblock all USB pipes */
+    usb_clear_halt(d->udev,
+            usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+    usb_clear_halt(d->udev,
+            usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+    usb_clear_halt(d->udev,
+            usb_rcvbulkpipe(d->udev, d->props.adapter[1].fe[0].stream.endpoint));
+
+
+	/* Reset the tuner */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 0) < 0) { //evk80
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x84, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	/* Reset the fpga */
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(50);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x3, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(50);
+//    //enable lna
+//	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 1) < 0) {
+//		err("set tuner gpio failed");
+//		return -EIO;
+//	}
+//	//enable ANT5V
+//	if (cxusb_d680_dmb_gpio_tuner(d, 0x82, 1) < 0) {
+//		err("set tuner gpio failed");
+//		return -EIO;
+//	}
+
+
+    /* Attach frontend */
+    adap->fe_adap[0].fe = dvb_attach(cxd2858_attach, &rd2540b_cfg, &d->i2c_adap);
+    if (adap->fe_adap[0].fe == NULL)
+        return -EIO;
+
+    adap->fe_adap[0].fe->callback = cxusb_mygica_rd640b_callback;
+
+    return 0;
+}
+
+static int cxusb_mygica_mxl692_callback(void *ptr, int component, int command, int arg)
+{
+	struct dvb_usb_device *d = ptr;
+
+	if (usb_set_interface(d->udev, 0, 0) < 0)
+			err("set interface failed");
+	/* Unblock all USB pipes */
+	usb_clear_halt(d->udev,
+			usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+	switch(command) {
+	case FX2_HARDWARE_RESET:
+		deb_info("%s: hardware reset %d\n", __func__, arg);
+		/* Reset the tuner */
+	    if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 0) < 0) { //EVK 81
+	        err("clear tuner gpio failed");
+	        return -EIO;
+	    }
+	    msleep(100);
+	    if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 1) < 0) {
+	        err("set tuner gpio failed");
+	        return -EIO;
+	    }
+	    msleep(100);
+		break;
+	case FX2_HARDWARE_LNA:
+		deb_info("%s: hardware LAN %d\n", __func__, arg);
+		break;
+	default:
+		deb_info("%s: unknown command %d, arg %d\n", __func__, command, arg);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static struct mxl692_config mygica_mxl692_cfg = {
+	.demod_address = 0x60,
+	.output_mode = MXL692_PARALLEL_OUTPUT,
+};
+
+static int cxusb_mygica_md692_frontend_attach(struct dvb_usb_adapter *adap)
+{
+	struct dvb_usb_device *d = adap->dev;
+	/* Select required USB configuration */
+	if (usb_set_interface(d->udev, 0, 0) < 0)
+			err("set interface failed");
+	/* Unblock all USB pipes */
+	usb_clear_halt(d->udev,
+			usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
+	usb_clear_halt(d->udev,
+			usb_rcvbulkpipe(d->udev, d->props.adapter[0].fe[0].stream.endpoint));
+
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 0) < 0) {
+		err("clear tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+	if (cxusb_d680_dmb_gpio_tuner(d, 0x80, 1) < 0) {
+		err("set tuner gpio failed");
+		return -EIO;
+	}
+	msleep(100);
+
+	/* Attach frontend */
+	adap->fe_adap[0].fe = dvb_attach(mxl692_attach, &mygica_mxl692_cfg, &d->i2c_adap);
+	if (adap->fe_adap[0].fe == NULL)
+		return -EIO;
+	adap->fe_adap[0].fe->callback = cxusb_mygica_mxl692_callback;
+	return 0;
+
+}
+
 /*
  * DViCO has shipped two devices with the same USB ID, but only one of them
  * needs a firmware download.  Check the device class details to see if they
@@ -1530,6 +2230,13 @@ static struct dvb_usb_device_properties cxusb_bluebird_nano2_needsfirmware_prope
 static struct dvb_usb_device_properties cxusb_aver_a868r_properties;
 static struct dvb_usb_device_properties cxusb_d680_dmb_properties;
 static struct dvb_usb_device_properties cxusb_mygica_d689_properties;
+static struct dvb_usb_device_properties cxusb_rmidt2_c68a_properties;
+static struct dvb_usb_device_properties cxusb_mygica_md681_properties;
+static struct dvb_usb_device_properties cxusb_mygica_md640_properties;
+static struct dvb_usb_device_properties cxusb_mygica_md2540_properties;
+static struct dvb_usb_device_properties cxusb_mygica_md692_properties;
+static struct dvb_usb_device_properties cxusb_rmidt2_689a_properties;
+
 
 static int cxusb_medion_priv_init(struct dvb_usb_device *dvbdev)
 {
@@ -1655,6 +2362,18 @@ static int cxusb_probe(struct usb_interface *intf,
 					THIS_MODULE, NULL, adapter_nr) ||
 		   !dvb_usb_device_init(intf, &cxusb_mygica_d689_properties,
 					THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_rmidt2_c68a_properties,
+					THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_mygica_md681_properties,
+					THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_mygica_md640_properties,
+				     THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_mygica_md2540_properties,
+				     THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_mygica_md692_properties,
+				     THIS_MODULE, NULL, adapter_nr) ||
+		   !dvb_usb_device_init(intf, &cxusb_rmidt2_689a_properties,
+					THIS_MODULE, NULL, adapter_nr) ||
 		   0)
 		return 0;
 
@@ -1713,6 +2432,12 @@ static struct usb_device_id cxusb_table[] = {
 	DVB_USB_DEV(DVICO, DVICO_BLUEBIRD_DUAL_4_REV_2),
 	DVB_USB_DEV(CONEXANT, CONEXANT_D680_DMB),
 	DVB_USB_DEV(CONEXANT, MYGICA_D689),
+	DVB_USB_DEV(CONEXANT, MYGICA_T230),
+	DVB_USB_DEV(GTEK, MYGICA_A681),
+	DVB_USB_DEV(CONEXANT, MYGICA_A682),
+	DVB_USB_DEV(0x0572, MYGICA_T232),
+	DVB_USB_DEV(GTEK, MYGICA_692F),
+	DVB_USB_DEV(CONEXANT, MYGICA_689A),
 	{ }
 };
 
@@ -1905,7 +2630,7 @@ static struct dvb_usb_device_properties cxusb_bluebird_lgz201_properties = {
 
 	.size_of_priv     = sizeof(struct cxusb_state),
 
-	.num_adapters = 1,
+	.num_adapters = 2,
 	.adapter = {
 		{
 		.num_frontends = 1,
@@ -2380,6 +3105,398 @@ static struct dvb_usb_device_properties cxusb_mygica_d689_properties = {
 			"Mygica D689 DMB-TH",
 			{ NULL },
 			{ &cxusb_table[MYGICA_D689], NULL },
+		},
+	}
+};
+
+
+static struct dvb_usb_device_properties cxusb_rmidt2_c68a_properties = {
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+	.usb_ctrl         = CYPRESS_FX2,
+	.firmware            = "dvb-usb-rmtd-t2.fw",
+	.no_reconnect        = 1,
+
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 1,
+	.adapter = {
+		{
+			.num_frontends = 1,
+			.fe = {{
+//				.streaming_ctrl   = cxusb_d680_dmb_streaming_ctrl,
+				.streaming_ctrl   = cxusb_streaming_ctrl, //yh mark
+				.frontend_attach  = cxusb_rmidt2_c68a_frontend_attach,
+				.tuner_attach     = cxusb_rmidt2_c689_tuner_attach,
+
+				/* parameter for the MPEG2-data transfer */
+				.stream = {
+					.type = USB_BULK,
+					.count = 5,
+					.endpoint = 0x02,
+					.u = {
+							.bulk = {
+							.buffersize = 8192,//2048,//8192,
+						}
+					}
+				},
+			}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica T230 DVB-T/T2/C",
+			{ NULL },
+			{ &cxusb_table[MYGICA_T230], NULL },
+		},
+	}
+};
+
+static struct dvb_usb_device_properties cxusb_mygica_md681_properties = {
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+	.usb_ctrl         = CYPRESS_FX2,
+
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 1,
+	.adapter = {
+		{
+		.num_frontends = 1,
+		.fe = {{
+			.streaming_ctrl   = cxusb_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_md681_frontend_attach,
+			.tuner_attach     = cxusb_mygica_md681_tuner_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x02,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica D681 ATSC",
+			{ NULL },
+			{ &cxusb_table[MYGICA_A681], NULL },
+		},
+	}
+};
+
+static struct dvb_usb_device_properties cxusb_mygica_md640_properties = {
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+	.usb_ctrl         = CYPRESS_FX2,
+
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 2,
+	.adapter = {
+		{
+		.num_frontends = 1,
+		.fe = {{
+
+            .caps = DVB_USB_ADAP_HAS_PID_FILTER |
+                DVB_USB_ADAP_PID_FILTER_CAN_BE_TURNED_OFF,
+
+            .pid_filter_count = 16,
+            .pid_filter       = cxusb_mygica_rd640a_pid_filter,
+            .pid_filter_ctrl  = cxusb_mygica_rd640a_pid_filter_ctrl,
+
+			.streaming_ctrl   = cxusb_mygica_rd640a_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_rd640a_frontend_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x02,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+		{
+		.num_frontends = 1,
+		.fe = {{
+
+            .caps = DVB_USB_ADAP_HAS_PID_FILTER |
+                DVB_USB_ADAP_PID_FILTER_CAN_BE_TURNED_OFF,
+
+            .pid_filter_count = 16,
+            .pid_filter       = cxusb_mygica_rd640b_pid_filter,
+            .pid_filter_ctrl  = cxusb_mygica_rd640b_pid_filter_ctrl,
+
+			.streaming_ctrl   = cxusb_mygica_rd640b_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_rd640b_frontend_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x06,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica Dual ATSC",
+			{ NULL },
+			{ &cxusb_table[MYGICA_A682], NULL },
+		},
+
+	}
+};
+
+static struct dvb_usb_device_properties cxusb_mygica_md2540_properties = {
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+	.usb_ctrl         = CYPRESS_FX2,
+
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 2,
+	.adapter = {
+		{
+		.num_frontends = 1,
+		.fe = {{
+
+            //.caps = DVB_USB_ADAP_HAS_PID_FILTER |
+                //DVB_USB_ADAP_PID_FILTER_CAN_BE_TURNED_OFF,
+
+            //.pid_filter_count = 16,
+            //.pid_filter       = cxusb_mygica_rd640a_pid_filter,
+            //.pid_filter_ctrl  = cxusb_mygica_rd640a_pid_filter_ctrl,
+
+			.streaming_ctrl   = cxusb_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_rd2540a_frontend_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x02,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+		{
+		.num_frontends = 1,
+		.fe = {{
+
+            //.caps = DVB_USB_ADAP_HAS_PID_FILTER |
+                //DVB_USB_ADAP_PID_FILTER_CAN_BE_TURNED_OFF,
+
+            //.pid_filter_count = 16,
+            //.pid_filter       = cxusb_mygica_rd640b_pid_filter,
+            //.pid_filter_ctrl  = cxusb_mygica_rd640b_pid_filter_ctrl,
+
+			.streaming_ctrl   = cxusb_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_rd2540b_frontend_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x06,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica Dual T/T2",
+			{ NULL },
+			{ &cxusb_table[MYGICA_T232], NULL },
+		},
+
+	}
+};
+
+static struct dvb_usb_device_properties cxusb_mygica_md692_properties = {
+
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+	.usb_ctrl         = CYPRESS_FX2,
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 1,
+	.adapter = {
+		{
+		.num_frontends = 1,
+		.fe = {{
+			.streaming_ctrl   = cxusb_streaming_ctrl,
+			.frontend_attach  = cxusb_mygica_md692_frontend_attach,
+
+			/* parameter for the MPEG2-data transfer */
+			.stream = {
+				.type = USB_BULK,
+				.count = 5,
+				.endpoint = 0x02,
+				.u = {
+					.bulk = {
+						.buffersize = 8192,
+					}
+				}
+			},
+		}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+	
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica D692 ATSC",
+			{ NULL },
+			{ &cxusb_table[MYGICA_692F], NULL },
+		},
+	}
+};
+
+static struct dvb_usb_device_properties cxusb_rmidt2_689a_properties = {
+	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+	.usb_ctrl         = CYPRESS_FX2,
+	.firmware            = "dvb-usb-rmtd-t2.fw",
+	.no_reconnect        = 1,
+
+	.size_of_priv     = sizeof(struct cxusb_state),
+
+	.num_adapters = 1,
+	.adapter = {
+		{
+			.num_frontends = 1,
+			.fe = {{
+//				.streaming_ctrl   = cxusb_d680_dmb_streaming_ctrl,
+				.streaming_ctrl   = cxusb_streaming_ctrl, //yh mark
+				.frontend_attach  = cxusb_rmidt2_c68a_frontend_attach,
+				.tuner_attach     = cxusb_rmidt2_c689_tuner_attach,
+
+				/* parameter for the MPEG2-data transfer */
+				.stream = {
+					.type = USB_BULK,
+					.count = 5,
+					.endpoint = 0x02,
+					.u = {
+							.bulk = {
+							.buffersize = 8192,//2048,//8192,
+						}
+					}
+				},
+			}},
+		},
+	},
+
+	.i2c_algo         = &cxusb_i2c_algo,
+
+	.generic_bulk_ctrl_endpoint = 0x01,
+	
+	.rc.core = {
+		.rc_interval	= 100,
+		.rc_codes	= RC_MAP_D680_DMB,
+		.module_name	= KBUILD_MODNAME,
+		.rc_query       = cxusb_d680_dmb_rc_query,
+		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
+	},
+
+	.num_device_descs = 1,
+	.devices = {
+		{
+			"Mygica T230A DVB-T/T2/C",
+			{ NULL },
+			{ &cxusb_table[MYGICA_689A], NULL },
 		},
 	}
 };
