@@ -49,7 +49,6 @@
 #include "mn88436.h"
 #include "mxl692.h"
 #include "si2183.h"
-#include "si2141.h"
 
 /* debug */
 int dvb_usb_cxusb_debug;
@@ -81,12 +80,10 @@ enum cxusb_table_index {
 	DVICO_BLUEBIRD_DUAL_4_REV_2,
 	CONEXANT_D680_DMB,
 	MYGICA_D689,
-	MYGICA_T230,
 	MYGICA_A681,
 	MYGICA_A682,
 	MYGICA_T232,
 	MYGICA_692F,
-	MYGICA_689A,
 	NR__cxusb_table_index
 };
 
@@ -1372,11 +1369,6 @@ static  struct si2183_config rmidt2_si2183_cfg_a = {
 	.ts_clk_mode = SI2183_TS_MODE_MANUAL,
 };
 
-static struct si2141_config rmidt2_si2141_config ={
-	.id = GT_TUNER_SI2141,
-	.i2c_address = 0x60,
-};
-
 static int cxusb_rmidt2_c68a_frontend_attach(struct dvb_usb_adapter *adap)
 {
 	struct dvb_usb_device *d = adap->dev;
@@ -1409,15 +1401,6 @@ static int cxusb_rmidt2_c68a_frontend_attach(struct dvb_usb_adapter *adap)
 	if (adap->fe_adap[0].fe == NULL)
 		return -EIO;
 	return 0;
-}
-
-static int cxusb_rmidt2_c689_tuner_attach(struct dvb_usb_adapter *adap)
-{
-    struct dvb_frontend *fe;
-
-   deb_info("si2168 success attached  \n");
-   fe = dvb_attach(si2141_attach, adap->fe_adap[0].fe, &adap->dev->i2c_adap, &rmidt2_si2141_config);
-   return (fe == NULL) ? -EIO : 0;
 }
 
 static struct mxl603_config md681_mxl603_cfg = {
@@ -1933,7 +1916,6 @@ static struct dvb_usb_device_properties cxusb_mygica_d689_properties;
 static struct dvb_usb_device_properties cxusb_rmidt2_c68a_properties;
 static struct dvb_usb_device_properties cxusb_mygica_md681_properties;
 static struct dvb_usb_device_properties cxusb_mygica_md692_properties;
-static struct dvb_usb_device_properties cxusb_rmidt2_689a_properties;
 
 
 static int cxusb_medion_priv_init(struct dvb_usb_device *dvbdev)
@@ -2066,8 +2048,6 @@ static int cxusb_probe(struct usb_interface *intf,
 					THIS_MODULE, NULL, adapter_nr) ||
 		   !dvb_usb_device_init(intf, &cxusb_mygica_md692_properties,
 				     THIS_MODULE, NULL, adapter_nr) ||
-		   !dvb_usb_device_init(intf, &cxusb_rmidt2_689a_properties,
-					THIS_MODULE, NULL, adapter_nr) ||
 		   0)
 		return 0;
 
@@ -2126,12 +2106,10 @@ static struct usb_device_id cxusb_table[] = {
 	DVB_USB_DEV(DVICO, DVICO_BLUEBIRD_DUAL_4_REV_2),
 	DVB_USB_DEV(CONEXANT, CONEXANT_D680_DMB),
 	DVB_USB_DEV(CONEXANT, MYGICA_D689),
-	DVB_USB_DEV(CONEXANT, MYGICA_T230),
 	DVB_USB_DEV(GTEK, MYGICA_A681),
 	DVB_USB_DEV(CONEXANT, MYGICA_A682),
 	DVB_USB_DEV(0x0572, MYGICA_T232),
 	DVB_USB_DEV(GTEK, MYGICA_692F),
-	DVB_USB_DEV(CONEXANT, MYGICA_689A),
 	{ }
 };
 
@@ -2803,63 +2781,6 @@ static struct dvb_usb_device_properties cxusb_mygica_d689_properties = {
 	}
 };
 
-
-static struct dvb_usb_device_properties cxusb_rmidt2_c68a_properties = {
-	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
-
-	.usb_ctrl         = CYPRESS_FX2,
-	.firmware            = "dvb-usb-rmtd-t2.fw",
-	.no_reconnect        = 1,
-
-	.size_of_priv     = sizeof(struct cxusb_state),
-
-	.num_adapters = 1,
-	.adapter = {
-		{
-			.num_frontends = 1,
-			.fe = {{
-//				.streaming_ctrl   = cxusb_d680_dmb_streaming_ctrl,
-				.streaming_ctrl   = cxusb_streaming_ctrl, //yh mark
-				.frontend_attach  = cxusb_rmidt2_c68a_frontend_attach,
-				.tuner_attach     = cxusb_rmidt2_c689_tuner_attach,
-
-				/* parameter for the MPEG2-data transfer */
-				.stream = {
-					.type = USB_BULK,
-					.count = 5,
-					.endpoint = 0x02,
-					.u = {
-							.bulk = {
-							.buffersize = 8192,//2048,//8192,
-						}
-					}
-				},
-			}},
-		},
-	},
-
-	.i2c_algo         = &cxusb_i2c_algo,
-
-	.generic_bulk_ctrl_endpoint = 0x01,
-	
-	.rc.core = {
-		.rc_interval	= 100,
-		.rc_codes	= RC_MAP_D680_DMB,
-		.module_name	= KBUILD_MODNAME,
-		.rc_query       = cxusb_d680_dmb_rc_query,
-		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
-	},
-
-	.num_device_descs = 1,
-	.devices = {
-		{
-			"Mygica T230 DVB-T/T2/C",
-			{ NULL },
-			{ &cxusb_table[MYGICA_T230], NULL },
-		},
-	}
-};
-
 static struct dvb_usb_device_properties cxusb_mygica_md681_properties = {
 	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
 
@@ -2959,62 +2880,6 @@ static struct dvb_usb_device_properties cxusb_mygica_md692_properties = {
 			"Mygica D692 ATSC",
 			{ NULL },
 			{ &cxusb_table[MYGICA_692F], NULL },
-		},
-	}
-};
-
-static struct dvb_usb_device_properties cxusb_rmidt2_689a_properties = {
-	.caps = DVB_USB_IS_AN_I2C_ADAPTER,
-
-	.usb_ctrl         = CYPRESS_FX2,
-	.firmware            = "dvb-usb-rmtd-t2.fw",
-	.no_reconnect        = 1,
-
-	.size_of_priv     = sizeof(struct cxusb_state),
-
-	.num_adapters = 1,
-	.adapter = {
-		{
-			.num_frontends = 1,
-			.fe = {{
-//				.streaming_ctrl   = cxusb_d680_dmb_streaming_ctrl,
-				.streaming_ctrl   = cxusb_streaming_ctrl, //yh mark
-				.frontend_attach  = cxusb_rmidt2_c68a_frontend_attach,
-				.tuner_attach     = cxusb_rmidt2_c689_tuner_attach,
-
-				/* parameter for the MPEG2-data transfer */
-				.stream = {
-					.type = USB_BULK,
-					.count = 5,
-					.endpoint = 0x02,
-					.u = {
-							.bulk = {
-							.buffersize = 8192,//2048,//8192,
-						}
-					}
-				},
-			}},
-		},
-	},
-
-	.i2c_algo         = &cxusb_i2c_algo,
-
-	.generic_bulk_ctrl_endpoint = 0x01,
-	
-	.rc.core = {
-		.rc_interval	= 100,
-		.rc_codes	= RC_MAP_D680_DMB,
-		.module_name	= KBUILD_MODNAME,
-		.rc_query       = cxusb_d680_dmb_rc_query,
-		.allowed_protos = RC_PROTO_BIT_UNKNOWN,
-	},
-
-	.num_device_descs = 1,
-	.devices = {
-		{
-			"Mygica T230A DVB-T/T2/C",
-			{ NULL },
-			{ &cxusb_table[MYGICA_689A], NULL },
 		},
 	}
 };
